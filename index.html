@@ -6,10 +6,40 @@
   <style>
     body { font-family: Arial; margin: 30px; background: #fafafa; }
     h1 { color: #333; }
-    #results p { background: white; padding: 12px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 10px; }
-    input { width: 90%; padding: 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 16px; }
+    .result {
+      background: white;
+      padding: 12px;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      margin-bottom: 15px;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    .result img {
+      width: 90px;
+      height: 90px;
+      border-radius: 10px;
+      object-fit: cover;
+    }
+    .result a {
+      font-size: 18px;
+      font-weight: bold;
+      color: #0077cc;
+      text-decoration: none;
+    }
+    .result a:hover { text-decoration: underline; }
+    input {
+      width: 95%;
+      padding: 12px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      font-size: 16px;
+      margin-bottom: 20px;
+    }
   </style>
 </head>
+
 <body>
   <h1>🎧 Podcast Recommender</h1>
   <input id="search" placeholder="Search for a topic..." />
@@ -20,35 +50,40 @@
     import * as webllm from 'https://esm.run/@mlc-ai/web-llm';
 
     async function main() {
+      // Embedding model
       const embedder = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
-      const res = await fetch('podcasts.json');
+
+      // Load your final JSON
+      const res = await fetch('podcast_embeddings.json');
       const podcasts = await res.json();
 
-      // Load a small local Llama model
+      // LLM for silent reranking
       const engine = await webllm.CreateWebWorkerMLCEngine(
         new Worker('https://esm.run/@mlc-ai/web-llm/worker'),
         { model: 'Llama-3.2-1B-Instruct-q4f32_1-MLC' }
       );
 
       document.getElementById("search").addEventListener("input", async (e) => {
-        const query = e.target.value;
+        const query = e.target.value.trim();
         if (!query) return;
 
-        // Step 1: Vector search (get top 10)
+        // Step 1: Vector search
         const queryEmb = await embedder(query, { pooling: 'mean', normalize: true });
+
         const results = podcasts.map(p => ({
           ...p,
           score: cosineSimilarity(queryEmb.data[0], p.embedding)
         }));
+
         const top10 = results.sort((a,b) => b.score - a.score).slice(0, 10);
 
         // Step 2: LLM silent rerank
         const prompt = `
 User query: "${query}"
-Choose the best 5 podcasts from below that match this query.
-Return ONLY a JSON array of podcast IDs. Do not explain.
+Choose the best 5 podcasts that match this query.
+Return ONLY a JSON array of episode_id values. No explanation.
 
-${top10.map(p => `ID:${p.id}, Title:${p.title}, Description:${p.desc}`).join('\n')}
+${top10.map(p => `EP:${p.episode_id}, Title:${p.title}, Desc:${p.description}`).join('\n')}
 `;
 
         const reply = await engine.chat.completions.create({
@@ -58,22 +93,30 @@ ${top10.map(p => `ID:${p.id}, Title:${p.title}, Description:${p.desc}`).join('\n
 
         const raw = reply.choices[0].message.content;
         const topIds = extractIds(raw);
-        const top5 = top10.filter(p => topIds.includes(p.id));
 
-        displayResults(top5);
+        // Fallback: if LLM returns nothing, use top 5 vector results
+        const final5 = topIds.length
+          ? top10.filter(p => topIds.includes(p.episode_id))
+          : top10.slice(0, 5);
+
+        displayResults(final5);
       });
     }
 
     function cosineSimilarity(a, b) {
       let dot=0, normA=0, normB=0;
-      for (let i=0; i<a.length; i++){ dot+=a[i]*b[i]; normA+=a[i]**2; normB+=b[i]**2; }
-      return dot / (Math.sqrt(normA)*Math.sqrt(normB));
+      for (let i=0; i<a.length; i++){
+        dot += a[i] * b[i];
+        normA += a[i] ** 2;
+        normB += b[i] ** 2;
+      }
+      return dot / (Math.sqrt(normA) * Math.sqrt(normB));
     }
 
     function extractIds(text) {
       try {
         const json = JSON.parse(text.match(/\[.*\]/s)[0]);
-        return json.map(Number);
+        return json.map(x => x.toString());
       } catch {
         return [];
       }
@@ -81,8 +124,16 @@ ${top10.map(p => `ID:${p.id}, Title:${p.title}, Description:${p.desc}`).join('\n
 
     function displayResults(results) {
       const container = document.getElementById("results");
+
       container.innerHTML = results.map(r => `
-        <p><b>${r.title}</b><br>${r.desc}</p>
+        <div class="result">
+          <img src="${r.image}" alt="cover">
+          <div>
+            <a href="${r.link}" target="_blank">${r.title}</a><br>
+            <small style="color:#666;">${r.lastUpdate}</small><br><br>
+            <div>${r.description ? r.description.slice(0, 200) + "..." : ""}</div>
+          </div>
+        </div>
       `).join('');
     }
 
