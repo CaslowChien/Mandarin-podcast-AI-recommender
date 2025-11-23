@@ -26,7 +26,7 @@ This project creates a semantic search engine for Chinese podcasts by:
 3. Generating AI embeddings for semantic search
 4. Creating a fast, client-side search interface that runs entirely in the browser
 
-**Live Demo**: [Your deployment URL here]
+**🌐 Live Demo**: [https://caslowchien.github.io/podcast-recommender/](https://caslowchien.github.io/podcast-recommender/)
 
 ---
 
