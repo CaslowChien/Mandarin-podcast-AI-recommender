@@ -333,7 +333,7 @@
     // Improved configuration for better performance
     const CONFIG = {
       SHARD_COUNT: 200,
-      TOP_K: 50,              // Increased from 30 to get better candidates
+      TOP_K: 100,             // Increased from 50 to get more candidates
       FINAL_K: 10,
       DEBOUNCE_DELAY: 600,
       BATCH_SIZE: 10,         // Increased from 5 to load faster
@@ -500,35 +500,83 @@
       }
     }
 
-    // Improved keyword-based search for Chinese queries
+    // Enhanced keyword-based search with better Chinese support
     function keywordSearch(query, items) {
       const queryLower = query.toLowerCase();
+      const queryOriginal = query; // Keep original for case-sensitive Chinese
       const queryChars = query.split('');
+      const hasChinese = /[\u4e00-\u9fa5]/.test(query);
       
       return items.map(item => {
         let score = 0;
         
-        const title = (item.title || '').toLowerCase();
-        const desc = (item.description || '').toLowerCase();
-        const creator = (item.creator || '').toLowerCase();
+        const title = (item.title || '');
+        const titleLower = title.toLowerCase();
+        const desc = (item.description || '');
+        const descLower = desc.toLowerCase();
+        const creator = (item.creator || '');
+        const creatorLower = creator.toLowerCase();
         
-        // Exact match
-        if (title.includes(query)) score += 10;
-        if (desc.includes(query)) score += 5;
-        if (creator.includes(query)) score += 3;
-        
-        // Character-by-character matching for Chinese
-        let charMatches = 0;
-        for (const char of queryChars) {
-          if (title.includes(char)) charMatches++;
+        // EXACT MATCH - highest priority (case-insensitive for Chinese compatibility)
+        if (titleLower.includes(queryLower)) {
+          score += 100;
+          // Bonus if it's at the start
+          if (titleLower.startsWith(queryLower)) score += 50;
         }
-        score += charMatches * 0.5;
+        if (descLower.includes(queryLower)) score += 50;
+        if (creatorLower.includes(queryLower)) score += 30;
         
-        // Word boundary matching (for English)
+        // For Chinese queries, do more sophisticated matching
+        if (hasChinese && queryChars.length >= 2) {
+          // Check for partial phrase matches (e.g., "星座" should match "十二星座")
+          // Count consecutive character matches
+          let maxConsecutive = 0;
+          let currentConsecutive = 0;
+          
+          for (let i = 0; i < titleLower.length; i++) {
+            if (queryChars.some(char => titleLower[i] === char)) {
+              currentConsecutive++;
+              maxConsecutive = Math.max(maxConsecutive, currentConsecutive);
+            } else {
+              currentConsecutive = 0;
+            }
+          }
+          
+          // Reward consecutive matches heavily
+          score += maxConsecutive * 10;
+          
+          // Check if all characters are present (even if not consecutive)
+          const allCharsPresent = queryChars.every(char => 
+            titleLower.includes(char) || descLower.includes(char)
+          );
+          if (allCharsPresent) score += 20;
+          
+          // Individual character matching in title (less weight)
+          let titleCharMatches = 0;
+          for (const char of queryChars) {
+            if (titleLower.includes(char)) titleCharMatches++;
+          }
+          score += titleCharMatches * 3;
+          
+          // Check description for character matches (even less weight)
+          let descCharMatches = 0;
+          for (const char of queryChars) {
+            if (descLower.includes(char)) descCharMatches++;
+          }
+          score += descCharMatches * 1;
+        }
+        
+        // For English or mixed queries - word boundary matching
         const queryWords = queryLower.split(/\s+/).filter(w => w.length > 1);
         for (const word of queryWords) {
-          if (title.includes(word)) score += 2;
-          if (desc.includes(word)) score += 1;
+          // Exact word match
+          const wordRegex = new RegExp('\\b' + word + '\\b', 'i');
+          if (wordRegex.test(titleLower)) score += 15;
+          if (wordRegex.test(descLower)) score += 8;
+          
+          // Partial word match
+          if (titleLower.includes(word)) score += 5;
+          if (descLower.includes(word)) score += 2;
         }
         
         return {
@@ -681,10 +729,11 @@
         
         displayResults(reranked.slice(0, CONFIG.FINAL_K));
         
+        const keywordMatchCount = reranked.slice(0, CONFIG.FINAL_K).filter(r => r.keywordScore > 10).length;
         const filterInfo = currentLanguageFilter !== 'all' 
           ? ` (${filteredCount} filtered)` 
           : '';
-        updateStatus(`Found ${reranked.length} relevant podcasts${filterInfo}`);
+        updateStatus(`Found ${reranked.length} relevant podcasts${filterInfo} (${keywordMatchCount} with keyword matches)`);
         
       } catch (error) {
         console.error('Search error:', error);
@@ -698,8 +747,14 @@
 
     // Hybrid reranking combining semantic and keyword search
     function hybridRerank(query, semanticResults, allItems) {
-      // Get keyword-based results
-      const keywordResults = keywordSearch(query, allItems.slice(0, 1000)); // Limit for performance
+      // Get keyword-based results from ALL items, not just top 1000
+      console.log('Running keyword search on all filtered items...');
+      const keywordResults = keywordSearch(query, allItems);
+      
+      console.log('Top 10 keyword matches:', keywordResults.slice(0, 10).map(r => ({
+        title: r.title,
+        keywordScore: r.keywordScore
+      })));
       
       // Create a map of keyword scores
       const keywordScores = new Map();
@@ -708,19 +763,53 @@
         keywordScores.set(key, item.keywordScore);
       });
       
-      // Combine scores
-      return semanticResults.map(item => {
+      // For queries with high keyword matches, prioritize those results
+      const maxKeywordScore = keywordResults.length > 0 ? keywordResults[0].keywordScore : 0;
+      const hasStrongKeywordMatches = maxKeywordScore > 50;
+      
+      // If we have strong keyword matches, include them in results even if not in semantic top 50
+      let combinedResults = [...semanticResults];
+      
+      if (hasStrongKeywordMatches) {
+        const topKeywordResults = keywordResults.slice(0, 20);
+        for (const kwResult of topKeywordResults) {
+          const key = `${kwResult.title}|${kwResult.creator}`;
+          const alreadyIncluded = combinedResults.some(r => `${r.title}|${r.creator}` === key);
+          if (!alreadyIncluded) {
+            combinedResults.push({
+              ...kwResult,
+              score: 0.3, // Give a base semantic score
+              fromKeywordSearch: true
+            });
+          }
+        }
+      }
+      
+      // Combine scores with adaptive weighting
+      const hasChinese = /[\u4e00-\u9fa5]/.test(query);
+      
+      // If strong keyword matches exist, weight keywords much more heavily
+      let semanticWeight, keywordWeight;
+      if (hasStrongKeywordMatches && hasChinese) {
+        semanticWeight = 0.15;  // Reduced from 0.3
+        keywordWeight = 0.85;   // Increased from 0.7
+      } else if (hasChinese) {
+        semanticWeight = 0.3;
+        keywordWeight = 0.7;
+      } else {
+        semanticWeight = 0.6;   // For English, semantic is more reliable
+        keywordWeight = 0.4;
+      }
+      
+      console.log(`Weighting: semantic=${semanticWeight}, keyword=${keywordWeight}, hasStrongKeywordMatches=${hasStrongKeywordMatches}`);
+      
+      const scoredResults = combinedResults.map(item => {
         const key = `${item.title}|${item.creator}`;
         const keywordScore = keywordScores.get(key) || 0;
         
-        // Weight semantic similarity more for English, keywords more for Chinese
-        const hasChinese = /[\u4e00-\u9fa5]/.test(query);
-        const semanticWeight = hasChinese ? 0.3 : 0.7;
-        const keywordWeight = hasChinese ? 0.7 : 0.3;
-        
         // Normalize scores to 0-1 range
-        const normalizedSemantic = item.score; // Already normalized
-        const normalizedKeyword = Math.min(keywordScore / 20, 1); // Scale keyword score
+        const normalizedSemantic = item.score; // Already 0-1
+        const normalizedKeyword = Math.min(keywordScore / (maxKeywordScore || 100), 1);
         
         const finalScore = (normalizedSemantic * semanticWeight) + (normalizedKeyword * keywordWeight);
         
@@ -729,7 +818,9 @@
           keywordScore,
           finalScore
         };
-      }).sort((a, b) => b.finalScore - a.finalScore);
+      });
+      
+      return scoredResults.sort((a, b) => b.finalScore - a.finalScore);
     }
 
     // Display search results
