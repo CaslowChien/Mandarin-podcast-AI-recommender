@@ -2,6 +2,8 @@
 
 An AI-powered semantic search engine for Chinese podcasts, built with embeddings and deployed as a static website. Search through thousands of Chinese podcast episodes using natural language queries in both English and Chinese.
 
+**🌐 Live Website**: **[https://caslowchien.github.io/podcast-recommender/](https://caslowchien.github.io/podcast-recommender/)**
+
 ![Search Demo](https://img.shields.io/badge/Status-Live-success)
 ![Language](https://img.shields.io/badge/Languages-中文%20%7C%20English-blue)
 
