@@ -1,8 +1,8 @@
 # 🎧 Mandarin Podcast AI Recommender
 
-An AI-powered semantic search engine for Chinese podcasts, built with embeddings and deployed as a static website. Search through thousands of Chinese podcast episodes using natural language queries in both English and Chinese.
+An AI-powered semantic search engine for Mandarin podcasts, built with embeddings and deployed as a static website. Search through thousands of Mandarin podcast episodes using natural language queries in both Mandarin and Chinese.
 
-**🌐 Live Website**: **[https://caslowchien.github.io/podcast-recommender/](https://caslowchien.github.io/podcast-recommender/)**
+**🌐 Live Website**: **[https://caslowchien.github.io/Mandarin-podcast-AI-recommender/](https://caslowchien.github.io/Mandarin-podcast-AI-recommender/)**
 
 ![Search Demo](https://img.shields.io/badge/Status-Live-success)
 ![Language](https://img.shields.io/badge/Languages-中文%20%7C%20English-blue)
@@ -28,7 +28,7 @@ This project creates a semantic search engine for Chinese podcasts by:
 3. Generating AI embeddings for semantic search
 4. Creating a fast, client-side search interface that runs entirely in the browser
 
-**🌐 Live Demo**: [https://caslowchien.github.io/podcast-recommender/](https://caslowchien.github.io/podcast-recommender/)
+**🌐 Live Demo**: [https://caslowchien.github.io/Mandarin-podcast-AI-recommender/](https://caslowchien.github.io/Mandarin-podcast-AI-recommender/)
 
 ---
 
