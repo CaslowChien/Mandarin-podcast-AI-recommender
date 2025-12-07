@@ -1,4 +1,4 @@
-# 🎧 Mandarin Podcast Search Engine
+# 🎧 Mandarin Podcast AI Recommender
 
 An AI-powered semantic search engine for Chinese podcasts, built with embeddings and deployed as a static website. Search through thousands of Chinese podcast episodes using natural language queries in both English and Chinese.
 
